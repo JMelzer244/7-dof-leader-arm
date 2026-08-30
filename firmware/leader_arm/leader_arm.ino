@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <Wire.h>
 #include <U8g2lib.h>
+#include <math.h>
 
 // ======================================================
 // OLED: separate software-I2C bus
@@ -27,6 +28,7 @@ U8G2_SSD1309_128X64_NONAME0_F_SW_I2C oled(
 #define AS5600_RAW_ANGLE_REGISTER 0x0C
 
 #define SENSOR_COUNT 7
+#define CALIBRATION_SAMPLES 20
 
 // J1=CH0, J2=CH1, J3=CH7, J4=CH6
 // J5=CH5, J6=CH4, J7=CH3
@@ -34,10 +36,19 @@ const uint8_t sensorChannels[SENSOR_COUNT] = {
   0, 1, 7, 6, 5, 4, 3
 };
 
-// Adjust these later to set each joint's zero position
+// Filled automatically during startup calibration
 float zeroOffsetDegrees[SENSOR_COUNT] = {
   0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
 };
+
+// ======================================================
+// Draw centered text
+// ======================================================
+void drawCenteredText(int y, const char *text) {
+  int textWidth = oled.getStrWidth(text);
+  int x = (128 - textWidth) / 2;
+  oled.drawStr(x, y, text);
+}
 
 // ======================================================
 // Select one multiplexer channel
@@ -84,21 +95,175 @@ bool readAS5600(uint8_t channel, uint16_t &rawAngle) {
 }
 
 // ======================================================
-// Convert raw value to degrees
+// Convert raw reading to absolute 0–360 degrees
 // ======================================================
-float rawToDegrees(uint16_t rawAngle, float zeroOffset) {
-  float degrees = rawAngle * 360.0f / 4096.0f;
-  degrees -= zeroOffset;
+float rawToAbsoluteDegrees(uint16_t rawAngle) {
+  return rawAngle * 360.0f / 4096.0f;
+}
 
-  while (degrees < 0.0f) {
-    degrees += 360.0f;
+// ======================================================
+// Convert raw reading to signed calibrated angle
+// ======================================================
+float rawToCalibratedDegrees(
+  uint16_t rawAngle,
+  float zeroOffset
+) {
+  float currentAngle = rawToAbsoluteDegrees(rawAngle);
+  float jointAngle = currentAngle - zeroOffset;
+
+  // Prevent a jump when crossing the encoder's 0/360 point
+  if (jointAngle > 180.0f) {
+    jointAngle -= 360.0f;
   }
 
-  while (degrees >= 360.0f) {
-    degrees -= 360.0f;
+  if (jointAngle < -180.0f) {
+    jointAngle += 360.0f;
   }
 
-  return degrees;
+  return jointAngle;
+}
+
+// ======================================================
+// Display the three-second countdown
+// ======================================================
+void displayCalibrationCountdown() {
+  char countdownText[4];
+
+  for (int seconds = 3; seconds >= 1; seconds--) {
+    snprintf(
+      countdownText,
+      sizeof(countdownText),
+      "%d",
+      seconds
+    );
+
+    oled.clearBuffer();
+
+    oled.setFont(u8g2_font_7x14B_tf);
+    drawCenteredText(14, "ALIGN ARM");
+
+    oled.setFont(u8g2_font_logisoso32_tn);
+    drawCenteredText(52, countdownText);
+
+    oled.sendBuffer();
+
+    Serial.print("Calibrating in ");
+    Serial.print(seconds);
+    Serial.println("...");
+
+    delay(1000);
+  }
+}
+
+// ======================================================
+// Record all seven zero positions
+// ======================================================
+bool calibrateLeaderArm(int &failedSensor) {
+  float sineTotals[SENSOR_COUNT] = {0};
+  float cosineTotals[SENSOR_COUNT] = {0};
+
+  oled.clearBuffer();
+
+  oled.setFont(u8g2_font_7x14B_tf);
+  drawCenteredText(27, "HOLD STILL");
+
+  oled.setFont(u8g2_font_6x12_tf);
+  drawCenteredText(47, "CALIBRATING...");
+
+  oled.sendBuffer();
+
+  for (int sample = 0; sample < CALIBRATION_SAMPLES; sample++) {
+    for (int i = 0; i < SENSOR_COUNT; i++) {
+      uint16_t rawAngle;
+
+      if (!readAS5600(sensorChannels[i], rawAngle)) {
+        failedSensor = i;
+        return false;
+      }
+
+      float angleRadians =
+          rawAngle * TWO_PI / 4096.0f;
+
+      sineTotals[i] += sinf(angleRadians);
+      cosineTotals[i] += cosf(angleRadians);
+    }
+
+    delay(25);
+  }
+
+  // Calculate the average angle for each encoder
+  for (int i = 0; i < SENSOR_COUNT; i++) {
+    float averageRadians = atan2f(
+      sineTotals[i],
+      cosineTotals[i]
+    );
+
+    float averageDegrees =
+        averageRadians * 180.0f / PI;
+
+    if (averageDegrees < 0.0f) {
+      averageDegrees += 360.0f;
+    }
+
+    zeroOffsetDegrees[i] = averageDegrees;
+
+    Serial.print("Joint ");
+    Serial.print(i + 1);
+    Serial.print(" zero offset: ");
+    Serial.print(zeroOffsetDegrees[i], 2);
+    Serial.println(" degrees");
+  }
+
+  return true;
+}
+
+// ======================================================
+// Display successful calibration
+// ======================================================
+void displayCalibrationComplete() {
+  oled.clearBuffer();
+
+  oled.setFont(u8g2_font_7x14B_tf);
+  drawCenteredText(27, "CALIBRATION");
+
+  oled.setFont(u8g2_font_6x12_tf);
+  drawCenteredText(48, "COMPLETE");
+
+  oled.sendBuffer();
+
+  Serial.println("Calibration complete.");
+  delay(1000);
+}
+
+// ======================================================
+// Display failed calibration
+// ======================================================
+void displayCalibrationError(int failedSensor) {
+  char errorText[24];
+
+  snprintf(
+    errorText,
+    sizeof(errorText),
+    "CHECK J%d ON CH%d",
+    failedSensor + 1,
+    sensorChannels[failedSensor]
+  );
+
+  oled.clearBuffer();
+
+  oled.setFont(u8g2_font_7x14B_tf);
+  drawCenteredText(22, "CAL FAILED");
+
+  oled.setFont(u8g2_font_6x12_tf);
+  drawCenteredText(42, errorText);
+  drawCenteredText(58, "RESET TO RETRY");
+
+  oled.sendBuffer();
+
+  Serial.print("Calibration failed on Joint ");
+  Serial.print(failedSensor + 1);
+  Serial.print(", multiplexer channel ");
+  Serial.println(sensorChannels[failedSensor]);
 }
 
 // ======================================================
@@ -128,7 +293,7 @@ void displayReadings(float degrees[], bool sensorOK[]) {
       boxHeight = 15;
     }
 
-    // J7 uses one full-width box at the bottom
+    // J7 uses the full-width bottom box
     else {
       boxX = 0;
       boxY = 48;
@@ -169,7 +334,6 @@ void displayReadings(float degrees[], bool sensorOK[]) {
       readingText
     );
 
-    // Draw a degree symbol after valid readings
     if (sensorOK[i]) {
       oled.drawCircle(
         textX + textWidth + 2,
@@ -204,17 +368,20 @@ void setup() {
   oled.setPowerSave(0);
   oled.setContrast(255);
 
-  oled.clearBuffer();
+  displayCalibrationCountdown();
 
-  oled.setFont(u8g2_font_7x14B_tf);
-  oled.drawStr(17, 29, "JOINT SENSORS");
+  int failedSensor = -1;
 
-  oled.setFont(u8g2_font_6x12_tf);
-  oled.drawStr(43, 48, "STARTING");
+  if (!calibrateLeaderArm(failedSensor)) {
+    displayCalibrationError(failedSensor);
 
-  oled.sendBuffer();
+    // Stop here until the ESP32 is reset
+    while (true) {
+      delay(1000);
+    }
+  }
 
-  delay(500);
+  displayCalibrationComplete();
 }
 
 // ======================================================
@@ -232,7 +399,7 @@ void loop() {
     );
 
     if (sensorOK[i]) {
-      degrees[i] = rawToDegrees(
+      degrees[i] = rawToCalibratedDegrees(
         rawAngles[i],
         zeroOffsetDegrees[i]
       );
@@ -241,7 +408,6 @@ void loop() {
 
   displayReadings(degrees, sensorOK);
 
-  // Raw readings remain available in the Serial Monitor
   for (int i = 0; i < SENSOR_COUNT; i++) {
     Serial.print("Joint ");
     Serial.print(i + 1);
