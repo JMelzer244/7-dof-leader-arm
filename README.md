@@ -12,7 +12,9 @@ Overall build:
 
 Electronics:
 
-<!-- Drag the electronics photo below this line. -->
+<img width="4032" height="3024" alt="IMG_7308" src="https://github.com/user-attachments/assets/677da52e-ac23-47be-b324-65ae947ea1c1" />
+
+
 
 Demo video — live joint-angle tracking:
 
