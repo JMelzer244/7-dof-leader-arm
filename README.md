@@ -8,17 +8,15 @@ Because all seven encoders share the same fixed I2C address, they connect throug
 
 Overall build:
 
-<img width="1086" height="1111" alt="leader arm" src="https://github.com/user-attachments/assets/e54041f2-99cd-4700-824c-0b401a5d335b" />
+<img src="https://github.com/user-attachments/assets/e54041f2-99cd-4700-824c-0b401a5d335b" alt="Overall leader arm build" width="650">
 
 Electronics:
 
-<img width="4032" height="3024" alt="IMG_7308" src="https://github.com/user-attachments/assets/677da52e-ac23-47be-b324-65ae947ea1c1" />
-
-
+<img src="https://github.com/user-attachments/assets/677da52e-ac23-47be-b324-65ae947ea1c1" alt="Leader arm electronics" width="650">
 
 Demo video — live joint-angle tracking:
 
-<!-- Drag the demo video below this line. -->
+](https://github.com/user-attachments/assets/2bab6165-5787-47cf-99a6-d6066ba7f323)
 
 ## How it works
 
