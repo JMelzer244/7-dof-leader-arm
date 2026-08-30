@@ -23,6 +23,7 @@ https://github.com/user-attachments/assets/2bab6165-5787-47cf-99a6-d6066ba7f323
 - Each joint rotates a diametric magnet over an AS5600, providing contactless absolute-angle measurement.
 - A TCA9548A multiplexer lets the ESP32 read all seven encoders even though they share the same `0x36` I2C address.
 - The ESP32 selects one multiplexer channel at a time, reads the sensor, and converts its 12-bit output to degrees.
+- At startup, a three-second countdown gives the operator time to align the arm before the ESP32 averages 20 readings from each encoder and sets that pose to zero.
 - The joint angles are displayed as J1 through J7 on a 128 x 64 OLED.
 - The mechanism is fully passive; the operator moves the joints directly and no motors are used in the leader arm.
 - The measured angles will be streamed to the follower arm for teleoperation.
@@ -45,3 +46,5 @@ https://github.com/user-attachments/assets/2bab6165-5787-47cf-99a6-d6066ba7f323
 ## Running it
 
 Install the ESP32 board package and the `U8g2` library through the Arduino IDE. Open the leader-arm firmware, select the correct ESP32 board and serial port, then compile and upload it.
+
+After each startup or reset, hold the arm still in its reference pose during the three-second countdown. That pose will become 0° for all seven joints.
