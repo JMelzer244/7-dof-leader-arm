@@ -8,7 +8,7 @@ Because all seven encoders share the same fixed I2C address, they connect throug
 
 Overall build:
 
-<!-- Drag the overall build photo below this line. -->
+<img width="1086" height="1111" alt="leader arm" src="https://github.com/user-attachments/assets/e54041f2-99cd-4700-824c-0b401a5d335b" />
 
 Electronics:
 
